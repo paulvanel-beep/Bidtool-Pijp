@@ -165,37 +165,28 @@ def maak_prompt(invoer, comps):
             comps_str += f"- Buitenruimte/extra: {', '.join(kenmerken)}\n"
         comps_str += f"- Data-betrouwbaarheid: {c.get('ai_betr') or 'onbekend'}\n"
 
-    return f"""Je bent een ervaren makelaar in Amsterdam De Pijp die een biedadvies geeft op basis van vergelijkbare recente verkopen.
+    return f"""Je bent een ervaren makelaar in Amsterdam De Pijp die persoonlijk biedadvies geeft aan een potentiële koper. Schrijf alsof je tegenover hem of haar aan tafel zit, niet als een rapport.
 
 # De woning waarvoor advies wordt gevraagd
 
 {invoer_str}
 
-# Vergelijkbare verkopen (gefilterd op straat + sortering op gelijkenis)
+# Vergelijkbare verkopen in dezelfde straat (gesorteerd op gelijkenis)
 {comps_str}
 
 ---
 
-Geef een biedadvies in deze structuur:
+Schrijf je advies als een lopend verhaal in 3 alinea's, in helder Nederlands. **Geen koppen, geen bullets, geen tabellen.** Je advies wordt op een website getoond aan een echte koper — laat het persoonlijk en menselijk klinken, zoals een makelaar die uitlegt waarom hij iets denkt.
 
-## Bandbreedte
-- **Lage schatting:** € ...
-- **Mediane schatting:** € ...
-- **Hoge schatting:** € ...
+**Alinea 1 — Wat ik van de markt zie**: vat in 2-3 zinnen samen wat de vergelijkbare verkopen je vertellen. Noem 2-3 concrete panden bij naam (bv. "Nummer 60-2 ging recent voor €536.500 voor 58m² vol eigendom, en nummer 163-3 haalde €630.000 mede dankzij een dakterras"). Wijs op patronen die ertoe doen: erfpacht-effect, label-spreiding, premium voor buitenruimte, etc.
 
-## Onderbouwing
-3-5 zinnen waarin je uitlegt hoe je tot dit bedrag komt. Verwijs naar specifieke comparables (op nummer/adres). Noem expliciet als eigendomssituatie (erfpacht vs vol eigendom) of label-verschillen je inschatting beïnvloeden.
+**Alinea 2 — Wat dat betekent voor jouw pand**: verbind de comparables naar de woning waar deze koper interesse in heeft. Wat maakt dit pand uniek (groter/kleiner, beter label, vol eigendom of erfpacht, met/zonder tuin)? Welke comparables zijn DE beste anker en welke moet je minder zwaar wegen en waarom? Eindig met een concrete biedrange: "Een realistisch bod ligt tussen €X en €Y, met €Z als beste schatting."
 
-## Waarschuwingen / outliers
-- Comparables die scheef lijken (bv. verhuurd-verkocht waardoor €/m² laag is)
-- Comparables met data-betrouwbaarheid 'midden' of 'laag' — die zou ik minder zwaar wegen
-- Comparables met de match-vraagprijs flag (mogelijk recyclage)
-- Algemene caveats (kleine sample, beperkte spreiding)
+**Alinea 3 — Waar je voorzichtig moet zijn**: 1-2 zinnen over outliers, onzekerheden of openstaande vragen. Bijvoorbeeld: "Pas wel op met nummer 254-A — dat is verkocht in verhuurde staat en niet vergelijkbaar voor een vrije markt-koper" of "Vraag de eigendomssituatie op vóór je biedt, want erfpacht/vol eigendom scheelt hier €100k-€150k". Wees concreet, niet algemeen.
 
-## Vraagprijs-check
-Alleen als vraagprijs is opgegeven: realistisch (binnen bandbreedte) / onder / boven.
+{("Als de koper een vraagprijs van €" + format(invoer.get('vraagprijs', 0), ',') + " heeft genoemd, geef tussendoor je oordeel: realistisch / aan de hoge kant / te laag — en waarom.") if invoer.get('vraagprijs') else ""}
 
-Houd het kort en concreet — dit wordt aan een potentiële koper getoond op een website.
+Belangrijk: schrijf alsof je de comparables echt hebt bekeken. Verwijs naar specifieke huisnummers en eigenschappen ("nummer 39-B met label B", "nummer 256-1A in verhuurde staat"). Maak het tastbaar.
 """
 
 
@@ -251,35 +242,17 @@ if submitted:
         "vraagprijs": int(vraagprijs) if vraagprijs > 0 else None,
     }
 
-    with st.spinner("Comparables zoeken in database..."):
+    # Stap 1: comparables zoeken (snel)
+    with st.spinner("Vergelijkbare verkopen zoeken..."):
         comps = haal_comparables(invoer['m2'], invoer['bouwjaar'], invoer['label'], invoer['eigendom'])
 
     if len(comps) < 3:
-        st.warning(f"Slechts {len(comps)} comparables gevonden — te weinig voor zinvol advies.")
+        st.warning(f"Slechts {len(comps)} vergelijkbare verkopen gevonden in de buurt — te weinig voor een onderbouwd advies.")
         st.stop()
 
-    st.success(f"✓ {len(comps)} comparables gevonden")
-
-    # Comparables tabel
-    st.subheader("Vergelijkbare verkopen")
-    tabel = []
-    for c in comps:
-        flag = " ⚠️" if c['transactie_flag'] == 'match_vraagprijs' else ""
-        tabel.append({
-            "Adres": c['address'],
-            "m²": c['m2'],
-            "Eigendom": c['eigendom'] or "?",
-            "Label": c['label'] or "?",
-            "Verkoopprijs": f"€{c['transactieprijs']:,}",
-            "€/m²": f"€{c['eur_per_m2']:,}",
-            "Score": c['score'],
-            "Betr.": (c['ai_betr'] or '?').replace('_', ' ') + flag,
-        })
-    st.dataframe(tabel, hide_index=True, use_container_width=True)
-
-    # Claude advies
+    # Stap 2: advies genereren — staat bovenaan, prominent
     api_key = laad_api_key()
-    with st.spinner("Claude raadplegen voor biedadvies..."):
+    with st.spinner(f"Analyseer {len(comps)} vergelijkbare verkopen en stel advies op..."):
         prompt = maak_prompt(invoer, comps)
         try:
             advies, usage = vraag_claude(prompt, api_key)
@@ -287,12 +260,35 @@ if submitted:
             st.error(f"Fout bij Claude API: {e}")
             st.stop()
 
-    st.subheader("📊 Biedadvies")
+    # Advies prominent tonen
+    st.markdown("### Advies")
     st.markdown(advies)
 
-    # Cost-info onderaan, klein
+    st.divider()
+
+    # Comparables-tabel onder advies in uitklap-blok (voor wie wil graven)
+    with st.expander(f"📊 De {len(comps)} verkopen waarop dit advies is gebaseerd"):
+        tabel = []
+        for c in comps:
+            flag = " ⚠️" if c['transactie_flag'] == 'match_vraagprijs' else ""
+            tabel.append({
+                "Adres": c['address'],
+                "m²": c['m2'],
+                "Eigendom": (c['eigendom'] or "?").replace('_', ' '),
+                "Label": c['label'] or "?",
+                "Verkoopprijs": f"€{c['transactieprijs']:,}",
+                "€/m²": f"€{c['eur_per_m2']:,}",
+                "Betrouwbaarheid": (c['ai_betr'] or '?') + flag,
+            })
+        st.dataframe(tabel, hide_index=True, use_container_width=True)
+        st.caption(
+            "⚠️ = mogelijke datakwaliteit-flag · Betrouwbaarheid 'hoog/midden/laag' geeft aan hoe zeker we zijn van de "
+            "kenmerken van die woning."
+        )
+
+    # Cost-info klein onderaan
     kosten = (usage.input_tokens * 3 + usage.output_tokens * 15) / 1_000_000
-    st.caption(f"Kosten van deze API-call: ~€{kosten:.4f} ({usage.input_tokens} in / {usage.output_tokens} out tokens)")
+    st.caption(f"Advies gegenereerd in ~10s · API-kosten ~€{kosten:.4f}")
 
 # ---------- Footer ----------
 
