@@ -203,7 +203,7 @@ def vraag_claude(prompt, api_key):
 # ---------- UI ----------
 
 st.title("🏠 Bidadvies Albert Cuypstraat")
-st.caption("AI-gegenereerde biedrange op basis van 22 recente verkopen in dezelfde straat. **Demo / experimenteel.**")
+st.caption("AI-gegenereerde biedrange op basis van 36 recente verkopen in dezelfde straat. **Demo / experimenteel.**")
 
 with st.form("invoer_form"):
     st.subheader("Vul de kenmerken van de woning in")
